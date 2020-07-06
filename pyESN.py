@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def correct_dimensions(s, targetlength):
     """checks the dimensionality of some numeric argument s, broadcasts it
        to the specified length if possible.
@@ -174,7 +175,6 @@ class ESN():
         if not self.silent:
             print("harvesting states...")
         # step the reservoir through the given input,output pairs:
-        print("Shape of inputs: "+str(np.shape(inputs)))
         states = np.zeros((inputs.shape[0], self.n_reservoir))
         for n in range(1, inputs.shape[0]):
             states[n, :] = self._update(states[n - 1], inputs_scaled[n, :],
@@ -189,22 +189,9 @@ class ESN():
         # include the raw inputs:
         extended_states = np.hstack((states, inputs_scaled))
         # Solve for W_out:
-        print(extended_states[transient:, :])
         self.W_out = np.dot(np.linalg.pinv(extended_states[transient:, :]),
-                            teachers_scaled[transient:, :]).T
-        print(teachers_scaled[transient:, :])
-        print("Teachers scaled: "+str(teachers_scaled[transient:, :]))
-        print("Extended states shape "+str(np.shape(extended_states[transient:, :])))
-        print("teachers_scaled shape "+str(np.shape(teachers_scaled[transient:, :])))
-        # import matplotlib.pyplot as plt
-        # plt.figure()
-        # plt.plot(teachers_scaled)
-        # plt.show()
+                            self.inverse_out_activation(teachers_scaled[transient:, :])).T
 
-
-
-
-        print("transient: "+str(transient))
         # remember the last state for later:
         self.laststate = states[-1, :]
         self.lastinput = inputs[-1, :]
@@ -223,8 +210,8 @@ class ESN():
         if not self.silent:
             print("training error:")
         # apply learned weights to the collected states:
-        pred_train = self._unscale_teacher(
-            np.dot(extended_states, self.W_out.T))
+        pred_train = self._unscale_teacher(self.out_activation(
+            np.dot(extended_states, self.W_out.T)))
         if not self.silent:
             print(np.sqrt(np.mean((pred_train - outputs)**2)))
         return pred_train
@@ -240,8 +227,6 @@ class ESN():
         Returns:
             Array of output activations
         """
-        print("inputs here")
-        print("testoing")
         if inputs.ndim < 2:
             inputs = np.reshape(inputs, (len(inputs), -1))
         n_samples = inputs.shape[0]
@@ -254,28 +239,17 @@ class ESN():
             laststate = np.zeros(self.n_reservoir)
             lastinput = np.zeros(self.n_inputs)
             lastoutput = np.zeros(self.n_outputs)
-        print("INPUTS")
-        print(inputs[:6])
 
         inputs = np.vstack([lastinput, self._scale_inputs(inputs)])
-        print("INPUT size")
-        print(np.shape(inputs))
-        print("INPUTS")
-        print(inputs[:6])
-        # print("Inputs element 1")
-        # print(inputs[0 + 1, :])
-
         states = np.vstack(
             [laststate, np.zeros((n_samples, self.n_reservoir))])
         outputs = np.vstack(
             [lastoutput, np.zeros((n_samples, self.n_outputs))])
-        # print(outputs)
+
         for n in range(n_samples):
             states[
-                n + 1, :] = self._update(states[n, :], inputs[n, :], outputs[n, :])
-            inputs[n + 1, :] =np.dot(self.W_out,
-                                                           np.concatenate([states[n + 1, :], inputs[n, :]]))
-        print("inputs after")
-        print(inputs[:10])
+                n + 1, :] = self._update(states[n, :], inputs[n + 1, :], outputs[n, :])
+            outputs[n + 1, :] = self.out_activation(np.dot(self.W_out,
+                                                           np.concatenate([states[n + 1, :], inputs[n + 1, :]])))
 
-        return self._unscale_teacher(inputs[1:])
+        return self._unscale_teacher(self.out_activation(outputs[1:]))
